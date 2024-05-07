@@ -20,7 +20,33 @@
 npm install
 ```
 
+```sh
+import React, { useState } from 'react';
+import ScrollPagination from 'reactjs-scroll-pagination';
 
+const MyComponent = () => {
+  const [data, setData] = useState([1, 2, 3, 4, 5]);
+  const [hasMore, setHasMore] = useState(true);
+
+  const loadMore = () => {
+    // Fetch more data here...
+    // Update 'data' state and set 'hasMore' accordingly
+  };
+
+  return (
+    <div>
+      <ScrollPagination loadMore={loadMore} hasMore={hasMore}>
+        {data.map((item) => (
+          <div key={item}>Item {item}</div>
+        ))}
+      </ScrollPagination>
+    </div>
+  );
+};
+
+export default MyComponent;
+
+```
 
 ## Author
 
