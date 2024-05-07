@@ -1,7 +1,11 @@
 {
   "name": "reactjs-scroll-pagination",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "description": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tanmoypaul1005/react-scroll-pagination.git"
+  },
   "main": "index.js",
   "scripts": {
     "build": "your-build-script",
