@@ -17,8 +17,11 @@
 ## Install
 
 ```sh
-npm install
+npm install reactjs-scroll-pagination
 ```
+
+## Usage
+The reactjs-scroll-pagination component provides a simple way to implement scroll pagination in React applications. Here's how you can use it:
 
 ```sh
 import React, { useState } from 'react';
