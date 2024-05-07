@@ -20,6 +20,39 @@
 npm install
 ```
 
+    <section id="usage">
+        <h2>Usage</h2>
+        <p>To use the `genie-password-validator` package in your project, follow these steps:</p>
+        <ol>
+            <li>Import the package into your code:
+                <pre><code>const { isStrongPassword } = require("genie-password-validator");</code></pre>
+            </li>
+            <li>Define the password to be checked and an optional configuration object:
+                <pre><code>const password = "YourPassword123!";
+const options = {
+    minUppercase: 1,
+    minLowercase: 1,
+    minDigits: 1,
+    minSpecialChars: 1,
+    minLength: 8,
+};</code></pre>
+            </li>
+            <li>Call the `isStrongPassword` function and pass in the password and options:
+                <pre><code>const result = isStrongPassword(password, options);</code></pre>
+            </li>
+            <li>You can then use the `result` object to handle the validation outcome in your code.
+                <pre><code>if (result.isValid) {
+    console.log("Password is strong and meets all criteria.");
+} else {
+    console.log("Password validation failed. Reasons:");
+    result.messages.forEach message => {
+        console.log(message);
+    });
+}</code></pre>
+            </li>
+        </ol>
+    </section>
+
 ## Author
 
 * Website: https://tanmoy-paul.vercel.app
