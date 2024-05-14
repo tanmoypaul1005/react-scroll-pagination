@@ -38,10 +38,15 @@ const MyComponent = () => {
 
   return (
     <div>
-      <ScrollPagination loading="Loading more..." loadMore={loadMore} hasMore={hasMore}>
-        {data.map((item) => (
+      <ScrollPagination 
+        loading="Loading more..." 
+        loadMore={loadMore} 
+        hasMore={hasMore}>
+        {
+          data.map((item) => (
           <div key={item}>Item {item}</div>
-        ))}
+        ))
+        }
       </ScrollPagination>
     </div>
   );
