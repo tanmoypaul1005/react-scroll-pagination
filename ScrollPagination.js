@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 
 const ScrollPagination = ({ children, loadMore, hasMore,loading="Loading more..." }) => {
+  
   const loaderRef = useRef(null);
 
   useEffect(() => {
