@@ -1,7 +1,7 @@
 // ScrollPagination.js
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 
-const ScrollPagination = ({ children, loadMore, hasMore }) => {
+const ScrollPagination = ({ children, loadMore, hasMore,loading="Loading more..." }) => {
   const loaderRef = useRef(null);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ const ScrollPagination = ({ children, loadMore, hasMore }) => {
   return (
     <div>
       {children}
-      {hasMore && <div ref={loaderRef}>Loading more...</div>}
+      {hasMore && <div ref={loaderRef}>{loading}</div>}
     </div>
   );
 };
