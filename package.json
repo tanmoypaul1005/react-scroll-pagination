@@ -1,21 +1,33 @@
 {
   "name": "reactjs-scroll-pagination",
-  "version": "3.0.11",
-  "description": "",
+  "version": "3.1.0",
+  "description": "A React component for infinite scroll pagination that works seamlessly with React and Next.js applications",
   "repository": {
     "type": "git",
     "url": "https://github.com/tanmoypaul1005/react-scroll-pagination.git"
   },
-  "main": "index.js",
+  "main": "ScrollPagination.js",
+  "module": "ScrollPagination.js",
+  "types": "ScrollPagination.d.ts",
   "scripts": {
-    "build": "your-build-script",
+    "build": "echo 'No build needed for pure React component'",
     "publish": "npm publish"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["react", "nextjs", "pagination", "infinite-scroll", "scroll", "loading"],
+  "author": "Tanmoy Paul",
   "license": "ISC",
-  "dependencies": {
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "devDependencies": {
     "next": "^14.2.3",
-    "react": "^18.3.1"
-  }
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "files": [
+    "ScrollPagination.js",
+    "ScrollPagination.d.ts",
+    "README.md"
+  ]
 }
