@@ -18,17 +18,29 @@ const ScrollPagination = ({
   debounceMs = 0,
   endMessage = null,
   loader = null,
+  enablePrefetch = false,
+  prefetchOffset = 500,
 }) => {
   const loaderRef = useRef(null);
+  const prefetchTriggerRef = useRef(null);
   const debounceTimer = useRef(null);
+  const prefetchDebounceTimer = useRef(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPrefetching, setIsPrefetching] = useState(false);
   const lastScrollY = useRef(0);
+  const hasPrefetched = useRef(false);
 
-  const handleLoadMore = useCallback(async () => {
-    if (isLoading) return;
+  const handleLoadMore = useCallback(async (isPrefetch = false) => {
+    if (isLoading || isPrefetching) return;
     
-    setIsLoading(true);
+    if (isPrefetch) {
+      setIsPrefetching(true);
+      hasPrefetched.current = true;
+    } else {
+      setIsLoading(true);
+    }
+    
     setError(null);
     
     try {
@@ -39,12 +51,17 @@ const ScrollPagination = ({
         onError(err);
       }
     } finally {
-      setIsLoading(false);
+      if (isPrefetch) {
+        setIsPrefetching(false);
+      } else {
+        setIsLoading(false);
+      }
     }
-  }, [loadMore, isLoading, onError]);
+  }, [loadMore, isLoading, isPrefetching, onError]);
 
   const handleRetry = useCallback(() => {
     setError(null);
+    hasPrefetched.current = false;
     handleLoadMore();
   }, [handleLoadMore]);
 
@@ -61,22 +78,43 @@ const ScrollPagination = ({
     return true;
   }, [scrollDirection]);
 
-  const handleIntersection = useCallback((entries) => {
-    if (entries[0].isIntersecting && hasMore && !isLoading) {
+  // Prefetch intersection handler - triggers before the main loader
+  const handlePrefetchIntersection = useCallback((entries) => {
+    if (entries[0].isIntersecting && hasMore && !isLoading && !isPrefetching && !hasPrefetched.current) {
       if (!checkScrollDirection()) return;
+
+      if (debounceMs > 0) {
+        if (prefetchDebounceTimer.current) {
+          clearTimeout(prefetchDebounceTimer.current);
+        }
+        prefetchDebounceTimer.current = setTimeout(() => {
+          handleLoadMore(true);
+        }, debounceMs);
+      } else {
+        handleLoadMore(true);
+      }
+    }
+  }, [hasMore, isLoading, isPrefetching, checkScrollDirection, debounceMs, handleLoadMore]);
+
+  const handleIntersection = useCallback((entries) => {
+    if (entries[0].isIntersecting && hasMore && !isLoading && !isPrefetching) {
+      if (!checkScrollDirection()) return;
+
+      // Reset prefetch flag when actual loader is reached
+      hasPrefetched.current = false;
 
       if (debounceMs > 0) {
         if (debounceTimer.current) {
           clearTimeout(debounceTimer.current);
         }
         debounceTimer.current = setTimeout(() => {
-          handleLoadMore();
+          handleLoadMore(false);
         }, debounceMs);
       } else {
-        handleLoadMore();
+        handleLoadMore(false);
       }
     }
-  }, [hasMore, isLoading, checkScrollDirection, debounceMs, handleLoadMore]);
+  }, [hasMore, isLoading, isPrefetching, checkScrollDirection, debounceMs, handleLoadMore]);
 
   useEffect(() => {
     // Check if we're in the browser (important for Next.js SSR)
@@ -103,12 +141,56 @@ const ScrollPagination = ({
     };
   }, [handleIntersection, rootMargin, threshold]);
 
+  // Prefetch observer - triggers earlier to prefetch next page
+  useEffect(() => {
+    if (typeof window === 'undefined' || !enablePrefetch) return;
+
+    // Calculate rootMargin for prefetch based on scroll direction and reverse mode
+    let prefetchRootMargin;
+    if (reverse) {
+      // For reverse mode (content loads at top)
+      prefetchRootMargin = scrollDirection === 'up' || scrollDirection === 'both'
+        ? `0px 0px ${prefetchOffset}px 0px`
+        : `${prefetchOffset}px 0px 0px 0px`;
+    } else {
+      // For normal mode (content loads at bottom)
+      prefetchRootMargin = scrollDirection === 'down' || scrollDirection === 'both'
+        ? `0px 0px ${prefetchOffset}px 0px`
+        : `${prefetchOffset}px 0px 0px 0px`;
+    }
+
+    const prefetchObserver = new IntersectionObserver(handlePrefetchIntersection, {
+      rootMargin: prefetchRootMargin,
+      threshold: 0,
+    });
+
+    const currentPrefetchTriggerRef = prefetchTriggerRef.current;
+
+    if (currentPrefetchTriggerRef) {
+      prefetchObserver.observe(currentPrefetchTriggerRef);
+    }
+
+    return () => {
+      if (currentPrefetchTriggerRef) {
+        prefetchObserver.unobserve(currentPrefetchTriggerRef);
+      }
+      if (prefetchDebounceTimer.current) {
+        clearTimeout(prefetchDebounceTimer.current);
+      }
+    };
+  }, [handlePrefetchIntersection, enablePrefetch, prefetchOffset, reverse, scrollDirection]);
+
   // Initial load on mount if enabled
   useEffect(() => {
     if (initialLoad && hasMore && typeof window !== 'undefined') {
       handleLoadMore();
     }
   }, [initialLoad]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset prefetch flag when hasMore changes (new data loaded)
+  useEffect(() => {
+    hasPrefetched.current = false;
+  }, [hasMore]);
 
   const renderLoader = () => {
     if (error && retryOnError) {
@@ -157,20 +239,33 @@ const ScrollPagination = ({
   const content = reverse ? (
     <>
       {hasMore && (
-        <div 
-          ref={loaderRef}
-          className={loaderClassName}
-          style={{ 
-            padding: '20px', 
-            textAlign: 'center',
-            minHeight: '50px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {renderLoader()}
-        </div>
+        <>
+          <div 
+            ref={loaderRef}
+            className={loaderClassName}
+            style={{ 
+              padding: '20px', 
+              textAlign: 'center',
+              minHeight: '50px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {renderLoader()}
+          </div>
+          {enablePrefetch && (
+            <div 
+              ref={prefetchTriggerRef}
+              style={{ 
+                height: '1px',
+                visibility: 'hidden',
+                pointerEvents: 'none'
+              }}
+              aria-hidden="true"
+            />
+          )}
+        </>
       )}
       {!hasMore && renderEndMessage()}
       {children}
@@ -179,20 +274,33 @@ const ScrollPagination = ({
     <>
       {children}
       {hasMore && (
-        <div 
-          ref={loaderRef}
-          className={loaderClassName}
-          style={{ 
-            padding: '20px', 
-            textAlign: 'center',
-            minHeight: '50px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {renderLoader()}
-        </div>
+        <>
+          {enablePrefetch && (
+            <div 
+              ref={prefetchTriggerRef}
+              style={{ 
+                height: '1px',
+                visibility: 'hidden',
+                pointerEvents: 'none'
+              }}
+              aria-hidden="true"
+            />
+          )}
+          <div 
+            ref={loaderRef}
+            className={loaderClassName}
+            style={{ 
+              padding: '20px', 
+              textAlign: 'center',
+              minHeight: '50px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {renderLoader()}
+          </div>
+        </>
       )}
       {!hasMore && renderEndMessage()}
     </>

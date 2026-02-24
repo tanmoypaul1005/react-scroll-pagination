@@ -17,6 +17,8 @@ export interface ScrollPaginationProps {
   debounceMs?: number;
   endMessage?: ReactNode | (() => ReactNode);
   loader?: ReactNode | (() => ReactNode);
+  enablePrefetch?: boolean;
+  prefetchOffset?: number;
 }
 
 declare const ScrollPagination: React.FC<ScrollPaginationProps>;

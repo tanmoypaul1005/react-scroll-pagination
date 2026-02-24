@@ -14,14 +14,15 @@
   </a>
 </p>
 
-> A powerful, lightweight React component for infinite scroll pagination that works seamlessly with React and Next.js applications. Features include error handling, retry mechanism, custom loaders, scroll direction detection, and much more!
+> A powerful, lightweight React component for infinite scroll pagination that works seamlessly with React and Next.js applications. Features include smart prefetching, error handling, retry mechanism, custom loaders, scroll direction detection, and much more!
 
 ## ✨ Features
 
 - 🚀 **Next.js SSR Compatible** - Works perfectly with server-side rendering
 - 🎯 **TypeScript Support** - Fully typed for better developer experience
 - ⚡ **Performance Optimized** - Uses IntersectionObserver API for efficient scroll detection
-- 🔄 **Error Handling** - Built-in error handling with retry functionality
+- � **Smart Prefetching** - Prefetch next page before reaching bottom with configurable offset
+- �🔄 **Error Handling** - Built-in error handling with retry functionality
 - 🎨 **Customizable** - Highly customizable loaders, messages, and styles
 - 📱 **Mobile Friendly** - Works great on all devices
 - 🔍 **Scroll Direction Detection** - Load more based on scroll direction
@@ -153,6 +154,71 @@ const ProductList = () => {
 | `loaderClassName` | string | No | "" | CSS class for the loader div |
 | `initialLoad` | boolean | No | false | Trigger loadMore on component mount |
 | `debounceMs` | number | No | 0 | Debounce time in milliseconds |
+| `enablePrefetch` | boolean | No | false | Enable smart prefetching of next page |
+| `prefetchOffset` | number | No | 500 | Distance in pixels before triggering prefetch |
+
+## 🔮 Smart Prefetching
+
+The smart prefetching feature allows you to load the next page of data before the user reaches the bottom of the current content, providing a seamless scrolling experience with no loading delays.
+
+### How It Works
+
+When `enablePrefetch` is enabled, the component uses a second IntersectionObserver that triggers at a configurable distance (`prefetchOffset`) before the actual loader element. This means:
+
+1. User scrolls down through content
+2. When they're `prefetchOffset` pixels away from the loader, the next page starts loading
+3. By the time they reach the bottom, the new content is already loaded
+4. Creates a smooth, infinite scroll experience with no waiting
+
+### Configuration
+
+```jsx
+<ScrollPagination 
+  loadMore={loadMore}
+  hasMore={hasMore}
+  enablePrefetch={true}          // Enable the feature
+  prefetchOffset={800}            // Trigger 800px before reaching loader
+>
+  {children}
+</ScrollPagination>
+```
+
+### Best Practices
+
+- **Fast connections**: Use smaller `prefetchOffset` values (300-500px)
+- **Slow connections**: Use larger `prefetchOffset` values (1000-1500px)
+- **Mobile devices**: Consider using 600-800px for better mobile experience
+- **Combine with debouncing**: Add `debounceMs={200}` to prevent rapid API calls
+- **Monitor performance**: Use `onError` to track failed prefetch requests
+
+### Example with Optimal Settings
+
+```jsx
+const OptimizedInfiniteScroll = () => {
+  const [data, setData] = useState([]);
+  const [hasMore, setHasMore] = useState(true);
+
+  const loadMore = async () => {
+    const newData = await fetchDataFromAPI();
+    setData([...data, ...newData]);
+    if (newData.length === 0) setHasMore(false);
+  };
+
+  return (
+    <ScrollPagination 
+      loadMore={loadMore}
+      hasMore={hasMore}
+      enablePrefetch={true}
+      prefetchOffset={700}
+      debounceMs={200}
+      threshold={0.5}
+      onError={(err) => console.error('Prefetch failed:', err)}
+    >
+      {data.map(item => <Card key={item.id} {...item} />)}
+    </ScrollPagination>
+  );
+};
+```
 
 ## Examples
 
@@ -238,6 +304,37 @@ const ProductList = () => {
   loadMore={loadMore}
   hasMore={hasMore}
   initialLoad={true}
+>
+  {children}
+</ScrollPagination>
+```
+
+### With Smart Prefetching
+
+```jsx
+// Prefetch next page 500px before reaching the loader
+<ScrollPagination 
+  loadMore={loadMore}
+  hasMore={hasMore}
+  enablePrefetch={true}
+  prefetchOffset={500}
+>
+  {children}
+</ScrollPagination>
+```
+
+### With Advanced Prefetching Configuration
+
+```jsx
+// Prefetch earlier for faster perceived performance
+<ScrollPagination 
+  loadMore={loadMore}
+  hasMore={hasMore}
+  enablePrefetch={true}
+  prefetchOffset={1000} // Trigger 1000px before the loader
+  debounceMs={200} // Debounce to prevent rapid calls
+  threshold={0.3}
+  rootMargin="100px"
 >
   {children}
 </ScrollPagination>

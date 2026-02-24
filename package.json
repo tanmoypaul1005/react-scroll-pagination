@@ -1,7 +1,7 @@
 {
   "name": "reactjs-scroll-pagination",
-  "version": "6.0.0",
-  "description": "A React component for infinite scroll pagination that works seamlessly with React and Next.js applications",
+  "version": "6.1.0",
+  "description": "A React component for infinite scroll pagination with smart prefetching that works seamlessly with React and Next.js applications",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tanmoypaul1005/react-scroll-pagination.git"
