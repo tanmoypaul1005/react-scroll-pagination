@@ -11,53 +11,135 @@ const ScrollPagination = ({
   reverse = false,
   scrollDirection = "down",
   onError = null,
+  onRetry = null,
   retryOnError = false,
+  retryAttempts = 0,
+  retryDelayMs = 500,
+  retryBackoffFactor = 2,
+  retryMaxDelayMs = 8000,
   className = "",
   loaderClassName = "",
   initialLoad = false,
   debounceMs = 0,
+  throttleMs = 0,
+  pauseWhenHidden = true,
   endMessage = null,
   loader = null,
   enablePrefetch = false,
   prefetchOffset = 500,
+  prefetchStrategy = "visibility",
+  adaptivePrefetch = false,
+  prefetchMinOffset = 200,
+  prefetchMaxOffset = 2000,
+  prefetchSpeedFactor = 500,
 }) => {
   const loaderRef = useRef(null);
   const prefetchTriggerRef = useRef(null);
   const debounceTimer = useRef(null);
   const prefetchDebounceTimer = useRef(null);
+  const throttleTimer = useRef(null);
+  const prefetchThrottleTimer = useRef(null);
+  const lastLoadTime = useRef(0);
+  const lastPrefetchTime = useRef(0);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPrefetching, setIsPrefetching] = useState(false);
+  const [prefetchOffsetState, setPrefetchOffsetState] = useState(prefetchOffset);
   const lastScrollY = useRef(0);
+  const lastScrollTime = useRef(0);
   const hasPrefetched = useRef(false);
+  const prefetchOffsetRef = useRef(prefetchOffset);
+
+  const shouldPauseForVisibility = useCallback(() => {
+    if (!pauseWhenHidden || typeof document === "undefined") return false;
+    return document.hidden;
+  }, [pauseWhenHidden]);
+
+  const waitUntilVisible = useCallback(() => {
+    if (!pauseWhenHidden || typeof document === "undefined") {
+      return Promise.resolve();
+    }
+    if (!document.hidden) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      const handleVisibility = () => {
+        if (!document.hidden) {
+          document.removeEventListener("visibilitychange", handleVisibility);
+          resolve();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibility);
+    });
+  }, [pauseWhenHidden]);
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const handleLoadMore = useCallback(async (isPrefetch = false) => {
     if (isLoading || isPrefetching) return;
-    
+    if (shouldPauseForVisibility()) return;
+
     if (isPrefetch) {
       setIsPrefetching(true);
       hasPrefetched.current = true;
     } else {
       setIsLoading(true);
     }
-    
+
     setError(null);
-    
-    try {
-      await loadMore();
-    } catch (err) {
-      setError(err);
-      if (onError) {
-        onError(err);
+
+    let lastError = null;
+    let attempt = 0;
+
+    while (attempt <= retryAttempts) {
+      try {
+        await loadMore();
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt >= retryAttempts) break;
+
+        const delay = Math.min(
+          retryDelayMs * Math.pow(retryBackoffFactor, attempt),
+          retryMaxDelayMs
+        );
+
+        if (onRetry) {
+          onRetry(err, attempt + 1, delay, isPrefetch);
+        }
+
+        await waitUntilVisible();
+        await sleep(delay);
       }
-    } finally {
-      if (isPrefetch) {
-        setIsPrefetching(false);
-      } else {
-        setIsLoading(false);
+
+      attempt += 1;
+    }
+
+    if (lastError) {
+      setError(lastError);
+      if (onError) {
+        onError(lastError);
       }
     }
-  }, [loadMore, isLoading, isPrefetching, onError]);
+
+    if (isPrefetch) {
+      setIsPrefetching(false);
+    } else {
+      setIsLoading(false);
+    }
+  }, [
+    loadMore,
+    isLoading,
+    isPrefetching,
+    onError,
+    onRetry,
+    retryAttempts,
+    retryDelayMs,
+    retryBackoffFactor,
+    retryMaxDelayMs,
+    shouldPauseForVisibility,
+    waitUntilVisible,
+  ]);
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -79,42 +161,76 @@ const ScrollPagination = ({
   }, [scrollDirection]);
 
   // Prefetch intersection handler - triggers before the main loader
+  const scheduleLoad = useCallback((isPrefetch) => {
+    const isDebounced = debounceMs > 0;
+    const isThrottled = throttleMs > 0 && !isDebounced;
+    const timerRef = isPrefetch ? prefetchDebounceTimer : debounceTimer;
+    const throttleRef = isPrefetch ? prefetchThrottleTimer : throttleTimer;
+    const lastTimeRef = isPrefetch ? lastPrefetchTime : lastLoadTime;
+
+    const invoke = () => handleLoadMore(isPrefetch);
+
+    if (isDebounced) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(invoke, debounceMs);
+      return;
+    }
+
+    if (isThrottled) {
+      const now = Date.now();
+      const elapsed = now - lastTimeRef.current;
+      if (elapsed >= throttleMs) {
+        lastTimeRef.current = now;
+        invoke();
+        return;
+      }
+      if (!throttleRef.current) {
+        throttleRef.current = setTimeout(() => {
+          throttleRef.current = null;
+          lastTimeRef.current = Date.now();
+          invoke();
+        }, throttleMs - elapsed);
+      }
+      return;
+    }
+
+    invoke();
+  }, [debounceMs, throttleMs, handleLoadMore]);
+
   const handlePrefetchIntersection = useCallback((entries) => {
     if (entries[0].isIntersecting && hasMore && !isLoading && !isPrefetching && !hasPrefetched.current) {
+      if (shouldPauseForVisibility()) return;
       if (!checkScrollDirection()) return;
-
-      if (debounceMs > 0) {
-        if (prefetchDebounceTimer.current) {
-          clearTimeout(prefetchDebounceTimer.current);
-        }
-        prefetchDebounceTimer.current = setTimeout(() => {
-          handleLoadMore(true);
-        }, debounceMs);
-      } else {
-        handleLoadMore(true);
-      }
+      scheduleLoad(true);
     }
-  }, [hasMore, isLoading, isPrefetching, checkScrollDirection, debounceMs, handleLoadMore]);
+  }, [
+    hasMore,
+    isLoading,
+    isPrefetching,
+    checkScrollDirection,
+    scheduleLoad,
+    shouldPauseForVisibility,
+  ]);
 
   const handleIntersection = useCallback((entries) => {
     if (entries[0].isIntersecting && hasMore && !isLoading && !isPrefetching) {
+      if (shouldPauseForVisibility()) return;
       if (!checkScrollDirection()) return;
 
       // Reset prefetch flag when actual loader is reached
       hasPrefetched.current = false;
-
-      if (debounceMs > 0) {
-        if (debounceTimer.current) {
-          clearTimeout(debounceTimer.current);
-        }
-        debounceTimer.current = setTimeout(() => {
-          handleLoadMore(false);
-        }, debounceMs);
-      } else {
-        handleLoadMore(false);
-      }
+      scheduleLoad(false);
     }
-  }, [hasMore, isLoading, isPrefetching, checkScrollDirection, debounceMs, handleLoadMore]);
+  }, [
+    hasMore,
+    isLoading,
+    isPrefetching,
+    checkScrollDirection,
+    scheduleLoad,
+    shouldPauseForVisibility,
+  ]);
 
   useEffect(() => {
     // Check if we're in the browser (important for Next.js SSR)
@@ -138,25 +254,77 @@ const ScrollPagination = ({
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
+      if (throttleTimer.current) {
+        clearTimeout(throttleTimer.current);
+      }
     };
   }, [handleIntersection, rootMargin, threshold]);
 
+  const shouldUseVisibilityPrefetch = prefetchStrategy === "visibility" || prefetchStrategy === "visibility-idle";
+  const shouldUseIdlePrefetch = prefetchStrategy === "idle" || prefetchStrategy === "visibility-idle";
+
+  useEffect(() => {
+    prefetchOffsetRef.current = prefetchOffsetState;
+  }, [prefetchOffsetState]);
+
+  useEffect(() => {
+    setPrefetchOffsetState(prefetchOffset);
+  }, [prefetchOffset]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !adaptivePrefetch) return;
+
+    lastScrollY.current = window.scrollY;
+    lastScrollTime.current = performance.now();
+
+    const handleScroll = () => {
+      const now = performance.now();
+      const dy = Math.abs(window.scrollY - lastScrollY.current);
+      const dt = Math.max(1, now - lastScrollTime.current);
+      const speed = dy / dt;
+
+      const nextOffset = Math.min(
+        prefetchMaxOffset,
+        Math.max(
+          prefetchMinOffset,
+          Math.round(prefetchOffset + speed * prefetchSpeedFactor)
+        )
+      );
+
+      if (Math.abs(nextOffset - prefetchOffsetRef.current) >= 50) {
+        setPrefetchOffsetState(nextOffset);
+      }
+
+      lastScrollY.current = window.scrollY;
+      lastScrollTime.current = now;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [
+    adaptivePrefetch,
+    prefetchOffset,
+    prefetchMinOffset,
+    prefetchMaxOffset,
+    prefetchSpeedFactor,
+  ]);
+
   // Prefetch observer - triggers earlier to prefetch next page
   useEffect(() => {
-    if (typeof window === 'undefined' || !enablePrefetch) return;
+    if (typeof window === 'undefined' || !enablePrefetch || !shouldUseVisibilityPrefetch) return;
 
     // Calculate rootMargin for prefetch based on scroll direction and reverse mode
     let prefetchRootMargin;
     if (reverse) {
       // For reverse mode (content loads at top)
       prefetchRootMargin = scrollDirection === 'up' || scrollDirection === 'both'
-        ? `0px 0px ${prefetchOffset}px 0px`
-        : `${prefetchOffset}px 0px 0px 0px`;
+        ? `0px 0px ${prefetchOffsetState}px 0px`
+        : `${prefetchOffsetState}px 0px 0px 0px`;
     } else {
       // For normal mode (content loads at bottom)
       prefetchRootMargin = scrollDirection === 'down' || scrollDirection === 'both'
-        ? `0px 0px ${prefetchOffset}px 0px`
-        : `${prefetchOffset}px 0px 0px 0px`;
+        ? `0px 0px ${prefetchOffsetState}px 0px`
+        : `${prefetchOffsetState}px 0px 0px 0px`;
     }
 
     const prefetchObserver = new IntersectionObserver(handlePrefetchIntersection, {
@@ -177,8 +345,56 @@ const ScrollPagination = ({
       if (prefetchDebounceTimer.current) {
         clearTimeout(prefetchDebounceTimer.current);
       }
+      if (prefetchThrottleTimer.current) {
+        clearTimeout(prefetchThrottleTimer.current);
+      }
     };
-  }, [handlePrefetchIntersection, enablePrefetch, prefetchOffset, reverse, scrollDirection]);
+  }, [
+    handlePrefetchIntersection,
+    enablePrefetch,
+    prefetchOffsetState,
+    reverse,
+    scrollDirection,
+    shouldUseVisibilityPrefetch,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !enablePrefetch || !shouldUseIdlePrefetch) return;
+    if (!hasMore || isLoading || isPrefetching || hasPrefetched.current) return;
+    if (shouldPauseForVisibility()) return;
+
+    let cancelled = false;
+    let idleId = null;
+
+    const triggerPrefetch = () => {
+      if (cancelled) return;
+      if (!hasMore || isLoading || isPrefetching || hasPrefetched.current) return;
+      handleLoadMore(true);
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(triggerPrefetch, { timeout: 1000 });
+    } else {
+      idleId = setTimeout(triggerPrefetch, 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window.cancelIdleCallback === "function" && typeof idleId === "number") {
+        window.cancelIdleCallback(idleId);
+      } else if (idleId) {
+        clearTimeout(idleId);
+      }
+    };
+  }, [
+    enablePrefetch,
+    shouldUseIdlePrefetch,
+    hasMore,
+    isLoading,
+    isPrefetching,
+    handleLoadMore,
+    shouldPauseForVisibility,
+  ]);
 
   // Initial load on mount if enabled
   useEffect(() => {

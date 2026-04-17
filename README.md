@@ -22,11 +22,15 @@
 - 🎯 **TypeScript Support** - Fully typed for better developer experience
 - ⚡ **Performance Optimized** - Uses IntersectionObserver API for efficient scroll detection
 - � **Smart Prefetching** - Prefetch next page before reaching bottom with configurable offset
+- 💤 **Idle Prefetching** - Optionally prefetch when the browser is idle
+- 📈 **Adaptive Prefetch** - Increase prefetch distance for fast scrolling
 - �🔄 **Error Handling** - Built-in error handling with retry functionality
 - 🎨 **Customizable** - Highly customizable loaders, messages, and styles
 - 📱 **Mobile Friendly** - Works great on all devices
 - 🔍 **Scroll Direction Detection** - Load more based on scroll direction
 - ⏱️ **Debouncing** - Prevent multiple rapid API calls
+- 🚦 **Throttling** - Limit load calls per time window
+- 🛑 **Visibility Pause** - Pause loading when the tab is hidden
 - 🔁 **Reverse Mode** - Load content at the top (useful for chat apps)
 - 🎭 **Custom Loaders** - Use your own loading components
 - 💪 **Lightweight** - No heavy dependencies
@@ -149,13 +153,25 @@ const ProductList = () => {
 | `reverse` | boolean | No | false | Load content at the top instead of bottom |
 | `scrollDirection` | 'up' \| 'down' \| 'both' | No | 'down' | Trigger loading based on scroll direction |
 | `onError` | (error: Error) => void | No | null | Error callback function |
+| `onRetry` | (error: Error, attempt: number, delayMs: number, isPrefetch: boolean) => void | No | null | Called before each retry attempt |
 | `retryOnError` | boolean | No | false | Show retry button on error |
+| `retryAttempts` | number | No | 0 | Number of automatic retry attempts |
+| `retryDelayMs` | number | No | 500 | Base retry delay in milliseconds |
+| `retryBackoffFactor` | number | No | 2 | Backoff multiplier for retries |
+| `retryMaxDelayMs` | number | No | 8000 | Maximum retry delay in milliseconds |
 | `className` | string | No | "" | CSS class for the wrapper div |
 | `loaderClassName` | string | No | "" | CSS class for the loader div |
 | `initialLoad` | boolean | No | false | Trigger loadMore on component mount |
 | `debounceMs` | number | No | 0 | Debounce time in milliseconds |
+| `throttleMs` | number | No | 0 | Throttle window in milliseconds |
+| `pauseWhenHidden` | boolean | No | true | Pause loading when the tab is hidden |
 | `enablePrefetch` | boolean | No | false | Enable smart prefetching of next page |
 | `prefetchOffset` | number | No | 500 | Distance in pixels before triggering prefetch |
+| `prefetchStrategy` | 'visibility' \| 'idle' \| 'visibility-idle' | No | 'visibility' | When prefetch should trigger |
+| `adaptivePrefetch` | boolean | No | false | Adapt prefetch distance based on scroll speed |
+| `prefetchMinOffset` | number | No | 200 | Minimum adaptive prefetch offset |
+| `prefetchMaxOffset` | number | No | 2000 | Maximum adaptive prefetch offset |
+| `prefetchSpeedFactor` | number | No | 500 | Multiplier for scroll speed to offset |
 
 ## 🔮 Smart Prefetching
 
