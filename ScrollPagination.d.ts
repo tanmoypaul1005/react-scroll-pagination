@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 
 export interface ScrollPaginationProps {
   children: ReactNode;
-  loadMore: () => void | Promise<void>;
+  loadMore: (options?: { signal?: AbortSignal | null; isPrefetch?: boolean }) => void | Promise<void>;
   hasMore: boolean;
   loading?: ReactNode;
   threshold?: number;
@@ -31,6 +31,13 @@ export interface ScrollPaginationProps {
   prefetchMinOffset?: number;
   prefetchMaxOffset?: number;
   prefetchSpeedFactor?: number;
+  manualLoadMore?: (options: { onClick: () => void; isLoading: boolean; error: Error | null }) => ReactNode;
+  manualLoadMoreLabel?: string;
+  manualLoadMoreLoadingLabel?: string;
+  manualLoadMoreClassName?: string;
+  enableAbort?: boolean;
+  abortOnNewLoad?: boolean;
+  abortOnUnmount?: boolean;
 }
 
 declare const ScrollPagination: React.FC<ScrollPaginationProps>;

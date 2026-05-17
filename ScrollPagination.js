@@ -32,6 +32,13 @@ const ScrollPagination = ({
   prefetchMinOffset = 200,
   prefetchMaxOffset = 2000,
   prefetchSpeedFactor = 500,
+  manualLoadMore = null,
+  manualLoadMoreLabel = "Load more",
+  manualLoadMoreLoadingLabel = "Loading...",
+  manualLoadMoreClassName = "",
+  enableAbort = false,
+  abortOnNewLoad = true,
+  abortOnUnmount = true,
 }) => {
   const loaderRef = useRef(null);
   const prefetchTriggerRef = useRef(null);
@@ -41,6 +48,7 @@ const ScrollPagination = ({
   const prefetchThrottleTimer = useRef(null);
   const lastLoadTime = useRef(0);
   const lastPrefetchTime = useRef(0);
+  const abortControllerRef = useRef(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPrefetching, setIsPrefetching] = useState(false);
@@ -49,6 +57,9 @@ const ScrollPagination = ({
   const lastScrollTime = useRef(0);
   const hasPrefetched = useRef(false);
   const prefetchOffsetRef = useRef(prefetchOffset);
+  const supportsIntersectionObserver = typeof window === "undefined"
+    ? true
+    : "IntersectionObserver" in window;
 
   const shouldPauseForVisibility = useCallback(() => {
     if (!pauseWhenHidden || typeof document === "undefined") return false;
@@ -74,6 +85,23 @@ const ScrollPagination = ({
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const abortActiveRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
+  const getAbortSignal = useCallback(() => {
+    if (!enableAbort || typeof AbortController === "undefined") return null;
+    if (abortOnNewLoad && abortControllerRef.current) {
+      abortActiveRequest();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    return controller.signal;
+  }, [enableAbort, abortOnNewLoad, abortActiveRequest]);
+
   const handleLoadMore = useCallback(async (isPrefetch = false) => {
     if (isLoading || isPrefetching) return;
     if (shouldPauseForVisibility()) return;
@@ -87,15 +115,23 @@ const ScrollPagination = ({
 
     setError(null);
 
+    const abortSignal = getAbortSignal();
+    let wasAborted = false;
+
     let lastError = null;
     let attempt = 0;
 
     while (attempt <= retryAttempts) {
       try {
-        await loadMore();
+        await loadMore({ signal: abortSignal, isPrefetch });
         lastError = null;
         break;
       } catch (err) {
+        if (enableAbort && err && err.name === "AbortError") {
+          wasAborted = true;
+          lastError = null;
+          break;
+        }
         lastError = err;
         if (attempt >= retryAttempts) break;
 
@@ -127,6 +163,10 @@ const ScrollPagination = ({
     } else {
       setIsLoading(false);
     }
+
+    if (enableAbort && !wasAborted) {
+      abortControllerRef.current = null;
+    }
   }, [
     loadMore,
     isLoading,
@@ -139,6 +179,8 @@ const ScrollPagination = ({
     retryMaxDelayMs,
     shouldPauseForVisibility,
     waitUntilVisible,
+    enableAbort,
+    getAbortSignal,
   ]);
 
   const handleRetry = useCallback(() => {
@@ -234,7 +276,7 @@ const ScrollPagination = ({
 
   useEffect(() => {
     // Check if we're in the browser (important for Next.js SSR)
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !supportsIntersectionObserver) return;
 
     const observer = new IntersectionObserver(handleIntersection, {
       rootMargin,
@@ -311,7 +353,7 @@ const ScrollPagination = ({
 
   // Prefetch observer - triggers earlier to prefetch next page
   useEffect(() => {
-    if (typeof window === 'undefined' || !enablePrefetch || !shouldUseVisibilityPrefetch) return;
+    if (typeof window === 'undefined' || !enablePrefetch || !shouldUseVisibilityPrefetch || !supportsIntersectionObserver) return;
 
     // Calculate rootMargin for prefetch based on scroll direction and reverse mode
     let prefetchRootMargin;
@@ -359,7 +401,7 @@ const ScrollPagination = ({
   ]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !enablePrefetch || !shouldUseIdlePrefetch) return;
+    if (typeof window === "undefined" || !enablePrefetch || !shouldUseIdlePrefetch || !supportsIntersectionObserver) return;
     if (!hasMore || isLoading || isPrefetching || hasPrefetched.current) return;
     if (shouldPauseForVisibility()) return;
 
@@ -402,6 +444,14 @@ const ScrollPagination = ({
       handleLoadMore();
     }
   }, [initialLoad]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    return () => {
+      if (enableAbort && abortOnUnmount) {
+        abortActiveRequest();
+      }
+    };
+  }, [enableAbort, abortOnUnmount, abortActiveRequest]);
 
   // Reset prefetch flag when hasMore changes (new data loaded)
   useEffect(() => {
@@ -452,34 +502,93 @@ const ScrollPagination = ({
     );
   };
 
+  const handleManualLoadMore = () => {
+    if (isLoading || isPrefetching) return;
+    handleLoadMore(false);
+  };
+
+  const renderManualLoadMore = () => {
+    if (error && retryOnError) {
+      return renderLoader();
+    }
+
+    if (manualLoadMore) {
+      return manualLoadMore({
+        onClick: handleManualLoadMore,
+        isLoading: isLoading || isPrefetching,
+        error,
+      });
+    }
+
+    const label = isLoading || isPrefetching ? manualLoadMoreLoadingLabel : manualLoadMoreLabel;
+
+    return (
+      <button
+        type="button"
+        onClick={handleManualLoadMore}
+        className={manualLoadMoreClassName}
+        disabled={isLoading || isPrefetching}
+        style={{
+          padding: '10px 16px',
+          background: '#0070f3',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: isLoading || isPrefetching ? 'not-allowed' : 'pointer',
+          opacity: isLoading || isPrefetching ? 0.7 : 1,
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
   const content = reverse ? (
     <>
       {hasMore && (
         <>
-          <div 
-            ref={loaderRef}
-            className={loaderClassName}
-            style={{ 
-              padding: '20px', 
-              textAlign: 'center',
-              minHeight: '50px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            {renderLoader()}
-          </div>
-          {enablePrefetch && (
-            <div 
-              ref={prefetchTriggerRef}
-              style={{ 
-                height: '1px',
-                visibility: 'hidden',
-                pointerEvents: 'none'
+          {supportsIntersectionObserver ? (
+            <>
+              <div 
+                ref={loaderRef}
+                className={loaderClassName}
+                style={{ 
+                  padding: '20px', 
+                  textAlign: 'center',
+                  minHeight: '50px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {renderLoader()}
+              </div>
+              {enablePrefetch && (
+                <div 
+                  ref={prefetchTriggerRef}
+                  style={{ 
+                    height: '1px',
+                    visibility: 'hidden',
+                    pointerEvents: 'none'
+                  }}
+                  aria-hidden="true"
+                />
+              )}
+            </>
+          ) : (
+            <div
+              className={loaderClassName}
+              style={{
+                padding: '20px',
+                textAlign: 'center',
+                minHeight: '50px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
-              aria-hidden="true"
-            />
+            >
+              {renderManualLoadMore()}
+            </div>
           )}
         </>
       )}
@@ -491,31 +600,49 @@ const ScrollPagination = ({
       {children}
       {hasMore && (
         <>
-          {enablePrefetch && (
-            <div 
-              ref={prefetchTriggerRef}
-              style={{ 
-                height: '1px',
-                visibility: 'hidden',
-                pointerEvents: 'none'
+          {supportsIntersectionObserver ? (
+            <>
+              {enablePrefetch && (
+                <div 
+                  ref={prefetchTriggerRef}
+                  style={{ 
+                    height: '1px',
+                    visibility: 'hidden',
+                    pointerEvents: 'none'
+                  }}
+                  aria-hidden="true"
+                />
+              )}
+              <div 
+                ref={loaderRef}
+                className={loaderClassName}
+                style={{ 
+                  padding: '20px', 
+                  textAlign: 'center',
+                  minHeight: '50px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {renderLoader()}
+              </div>
+            </>
+          ) : (
+            <div
+              className={loaderClassName}
+              style={{
+                padding: '20px',
+                textAlign: 'center',
+                minHeight: '50px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
-              aria-hidden="true"
-            />
+            >
+              {renderManualLoadMore()}
+            </div>
           )}
-          <div 
-            ref={loaderRef}
-            className={loaderClassName}
-            style={{ 
-              padding: '20px', 
-              textAlign: 'center',
-              minHeight: '50px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            {renderLoader()}
-          </div>
         </>
       )}
       {!hasMore && renderEndMessage()}

@@ -33,6 +33,8 @@
 - 🛑 **Visibility Pause** - Pause loading when the tab is hidden
 - 🔁 **Reverse Mode** - Load content at the top (useful for chat apps)
 - 🎭 **Custom Loaders** - Use your own loading components
+- 🖱️ **Manual Load More Fallback** - Button fallback when IntersectionObserver is unavailable
+- 🧯 **Abortable Requests** - Support AbortController for canceling in-flight loads
 - 💪 **Lightweight** - No heavy dependencies
 
 ## Install
@@ -172,6 +174,13 @@ const ProductList = () => {
 | `prefetchMinOffset` | number | No | 200 | Minimum adaptive prefetch offset |
 | `prefetchMaxOffset` | number | No | 2000 | Maximum adaptive prefetch offset |
 | `prefetchSpeedFactor` | number | No | 500 | Multiplier for scroll speed to offset |
+| `manualLoadMore` | (options) => ReactNode | No | null | Custom renderer for manual load more fallback |
+| `manualLoadMoreLabel` | string | No | "Load more" | Default label for the fallback button |
+| `manualLoadMoreLoadingLabel` | string | No | "Loading..." | Label shown while loading in fallback mode |
+| `manualLoadMoreClassName` | string | No | "" | CSS class for fallback button |
+| `enableAbort` | boolean | No | false | Enable AbortController support |
+| `abortOnNewLoad` | boolean | No | true | Abort previous request when a new load starts |
+| `abortOnUnmount` | boolean | No | true | Abort in-flight request on unmount |
 
 ## 🔮 Smart Prefetching
 
